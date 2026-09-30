@@ -79,4 +79,15 @@ Available Datasets
    something_something_v2
 
 .. note::
-   Documentation is being added progressively, as datasets are ready for usage. Please only use datasets found in the documentation.
+   Documentation is being added progressively. Check each page's implementation
+   status before use. The planned dataset pages below do not provide loaders.
+
+Planned Dataset Support
+-----------------------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Planned Image Classification Datasets (not implemented)
+
+   indoor67
+   fmd
