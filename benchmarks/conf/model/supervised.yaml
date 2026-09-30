@@ -5,6 +5,13 @@ params:
     batch_size: 128
     max_epochs: 50
     accumulate_grad_batches: 1
+  # Bounded integration runs; final test evaluation uses the separate reference protocol.
+  indoor67:
+    batch_size: 32
+    max_epochs: 20
+  fmd:
+    batch_size: 32
+    max_epochs: 20
   # CIFAR-scale (32x32) — tier 4 (×4)
   cifar10:
     batch_size: 128

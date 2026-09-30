@@ -25,12 +25,14 @@ from .fashion_mnist import FashionMNIST
 # from .celeb_a import CelebA
 from .fgvc_aircraft import FGVCAircraft
 from .flowers102 import Flowers102
+from .fmd import FMD
 from .food101 import Food101
 from .galaxy10 import Galaxy10Decal
 from .hasy_v2 import HASYv2
 from .imagenet_1k import ImageNet1K
 from .imagenet_10 import Imagenette
 from .imagenet_100 import ImageNet100
+from .indoor67 import Indoor67
 from .k_mnist import KMNIST
 from .linnaeus5 import Linnaeus5
 from .med_mnist import MedMNIST
@@ -71,12 +73,14 @@ __all__ = [
     "FashionMNIST",
     "FGVCAircraft",
     "Flowers102",
+    "FMD",
     "Galaxy10Decal",
     "Food101",
     "HASYv2",
     "ImageNet1K",
     "ImageNet100",
     "Imagenette",
+    "Indoor67",
     "KMNIST",
     "Linnaeus5",
     "MedMNIST",

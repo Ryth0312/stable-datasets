@@ -80,14 +80,14 @@ Available Datasets
 
 .. note::
    Documentation is being added progressively. Check each page's implementation
-   status before use. The planned dataset pages below do not provide loaders.
+   and validation status, including source availability and known limitations.
 
-Planned Dataset Support
------------------------
+Dataset Additions Under Validation
+----------------------------------
 
 .. toctree::
    :maxdepth: 1
-   :caption: Planned Image Classification Datasets (not implemented)
+   :caption: Image Classification Additions
 
    indoor67
    fmd
