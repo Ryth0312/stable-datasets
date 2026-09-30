@@ -6,9 +6,12 @@ hyperparameters.  See launch.sh for usage examples.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import os
+from pathlib import Path
 
 import hydra
 import lightning as pl
@@ -138,6 +141,45 @@ def _assign_gpu():
 # Main
 
 
+def _save_dataset_protocol_manifest(data, output_dir: str) -> None:
+    """Save new dataset protocols before training, requiring raw-asset provenance."""
+    manifest = getattr(data, "dataset_protocol_manifest", None)
+    if manifest is None:
+        return
+    if not manifest["source_fingerprints_complete"]:
+        raise ValueError(
+            "Indoor67/FMD benchmark runs require source_fingerprints for every raw asset; "
+            "supply the audited SHA-256 hex digests keyed by SOURCE.assets."
+        )
+    path = Path(output_dir) / "dataset_protocol.json"
+    if path.exists():
+        if json.loads(path.read_text(encoding="utf-8")) != manifest:
+            raise FileExistsError(f"Refusing to replace a different dataset protocol at {path}.")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as file:
+        json.dump(manifest, file, indent=2, sort_keys=True)
+        file.write("\n")
+
+
+def _get_run_checkpoint_dir(data, checkpoint_root: str, run_dir_name: str) -> str:
+    """Keep Indoor67/FMD checkpoints isolated by their complete protocol."""
+    run_dir = os.path.join(checkpoint_root, run_dir_name)
+    manifest = getattr(data, "dataset_protocol_manifest", None)
+    if manifest is None:
+        return run_dir
+    payload = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    protocol_dir = os.path.join(run_dir, f"protocol-{fingerprint}")
+    if os.path.isfile(os.path.join(protocol_dir, "last.ckpt")) and not os.path.isfile(
+        os.path.join(protocol_dir, "dataset_protocol.json")
+    ):
+        raise FileNotFoundError(f"Refusing to resume a checkpoint without its protocol manifest in {protocol_dir}.")
+    # Check before examining last.ckpt, so a mismatching record cannot resume.
+    _save_dataset_protocol_manifest(data, protocol_dir)
+    return protocol_dir
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     # Disable spt's run-registry / cache_dir on the SLURM worker. Module-level
@@ -181,7 +223,11 @@ def main(cfg: DictConfig) -> None:
         collate_fn,
         cfg.training,
         data_dir=cfg.get("data_dir"),
+        split_seed=cfg.get("split_seed", 42),
+        source_fingerprints=cfg.get("source_fingerprints"),
     )
+    output_dir = HydraConfig.get().runtime.output_dir or os.getcwd()
+    _save_dataset_protocol_manifest(data, output_dir)
 
     # Scheduler needs total steps
     accum = cfg.training.accumulate_grad_batches
@@ -198,7 +244,7 @@ def main(cfg: DictConfig) -> None:
     run_dir_name = f"{cfg.model.name}_{cfg.backbone}_{cfg.dataset}"
     if seed is not None:
         run_dir_name += f"_seed{seed}"
-    run_ckpt_dir = os.path.join(ckpt_cfg.dir, run_dir_name)
+    run_ckpt_dir = _get_run_checkpoint_dir(data, ckpt_cfg.dir, run_dir_name)
     ckpt_kwargs = {
         "dirpath": run_ckpt_dir,
         "filename": "{epoch}-{step}",
@@ -243,7 +289,6 @@ def main(cfg: DictConfig) -> None:
 
     # Trainer
     has_val = data.val is not None
-    output_dir = HydraConfig.get().runtime.output_dir or os.getcwd()
 
     trainer = pl.Trainer(
         max_epochs=1 if smoke_test else cfg.training.max_epochs,

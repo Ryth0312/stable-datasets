@@ -8,6 +8,7 @@ the individual model files (``models/*.py``).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ import stable_pretraining as spt
 import torch
 
 import stable_datasets as sds
+from benchmarks.dataset_protocols import build_dataset_protocol
 from stable_datasets.schema import ClassLabel
 
 
@@ -140,6 +142,9 @@ DATASET_CONFIGS: dict[str, DatasetConfig] = {
     ),
     "flowers102": _rgb("flowers102", "Flowers-102", 102, mean=[0.4344, 0.3830, 0.2954], std=[0.2937, 0.2458, 0.2726]),
     "food101": _rgb("food101", "Food-101", 101),
+    # These protocols are run explicitly with their own audited source fingerprints.
+    "fmd": _rgb("fmd", "FMD", 10, builder_name="FMD", include_in_results=False),
+    "indoor67": _rgb("indoor67", "Indoor67", 67, builder_name="Indoor67", include_in_results=False),
     "imagenet": _rgb("imagenet", "ImageNet", 1000, builder_name="ImageNet1K", include_in_results=False),
     "imagenette": _rgb("imagenette", "Imagenette", 10),
     "rockpaperscissor": _rgb("rockpaperscissor", "Rock-Paper-Scissors", 3),
@@ -490,6 +495,8 @@ def create_dataset(
     collate_fn,
     training_cfg,
     data_dir: str | None = None,
+    split_seed: int = 42,
+    source_fingerprints: Mapping[str, str] | None = None,
 ) -> tuple[spt.data.DataModule, DatasetConfig]:
     """Load a dataset and wrap it as a DataModule.
 
@@ -504,6 +511,8 @@ def create_dataset(
         collate_fn: Collation function for the *train* DataLoader.
         training_cfg: OmegaConf node with batch_size and num_workers.
         data_dir: Root directory for HF downloads/cache.
+        split_seed: Independent experimental split seed for Indoor67/FMD.
+        source_fingerprints: Raw-asset SHA-256 digests recorded by these protocols.
 
     Returns:
         Tuple of (DataModule, DatasetConfig).
@@ -513,16 +522,26 @@ def create_dataset(
     dataset_cls = _get_dataset_class(ds_config)
     extra_kwargs = _with_data_dirs(ds_config, data_dir)
 
-    log.info(f"Loading train split for '{name_lower}'...")
-    train_hf = dataset_cls(split="train", **extra_kwargs)
-    log.info(f"Loading validation split for '{name_lower}'...")
-    val_hf = _load_validation_split(dataset_cls, ds_config, **extra_kwargs)
+    protocol = None
+    if name_lower in {"indoor67", "fmd"}:
+        protocol = build_dataset_protocol(
+            name_lower,
+            dataset_cls(split=None, **extra_kwargs),
+            split_seed=split_seed,
+            source_fingerprints=source_fingerprints,
+        )
+        train_hf, val_hf = protocol.train_fit, protocol.validation
+    else:
+        log.info(f"Loading train split for '{name_lower}'...")
+        train_hf = dataset_cls(split="train", **extra_kwargs)
+        log.info(f"Loading validation split for '{name_lower}'...")
+        val_hf = _load_validation_split(dataset_cls, ds_config, **extra_kwargs)
 
-    if val_hf is None:
-        log.warning(f"No test/validation split for '{name_lower}'; holding out 10%% of train.")
-        splits = train_hf.train_test_split(test_size=0.1, seed=42)
-        train_hf = splits["train"]
-        val_hf = splits["test"]
+        if val_hf is None:
+            log.warning(f"No test/validation split for '{name_lower}'; holding out 10%% of train.")
+            splits = train_hf.train_test_split(test_size=0.1, seed=42)
+            train_hf = splits["train"]
+            val_hf = splits["test"]
 
     batch_size = training_cfg.batch_size
     num_workers = training_cfg.num_workers
@@ -564,4 +583,7 @@ def create_dataset(
         prefetch_factor=prefetch_factor,
     )
 
-    return spt.data.DataModule(train=train_loader, val=val_loader), ds_config
+    data = spt.data.DataModule(train=train_loader, val=val_loader)
+    if protocol is not None:
+        data.dataset_protocol_manifest = protocol.manifest
+    return data, ds_config
