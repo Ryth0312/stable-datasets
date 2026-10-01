@@ -144,7 +144,7 @@ DATASET_CONFIGS: dict[str, DatasetConfig] = {
     "food101": _rgb("food101", "Food-101", 101),
     # These protocols are run explicitly with their own audited source fingerprints.
     "fmd": _rgb("fmd", "FMD", 10, builder_name="FMD", include_in_results=False),
-    "indoor67": _rgb("indoor67", "Indoor67", 67, builder_name="Indoor67", include_in_results=False),
+    "tf_flowers": _rgb("tf_flowers", "TensorFlow Flowers", 5, builder_name="TFFlowers", include_in_results=False),
     "imagenet": _rgb("imagenet", "ImageNet", 1000, builder_name="ImageNet1K", include_in_results=False),
     "imagenette": _rgb("imagenette", "Imagenette", 10),
     "rockpaperscissor": _rgb("rockpaperscissor", "Rock-Paper-Scissors", 3),
@@ -511,7 +511,7 @@ def create_dataset(
         collate_fn: Collation function for the *train* DataLoader.
         training_cfg: OmegaConf node with batch_size and num_workers.
         data_dir: Root directory for HF downloads/cache.
-        split_seed: Independent experimental split seed for Indoor67/FMD.
+        split_seed: Independent experimental split seed for FMD/TF Flowers.
         source_fingerprints: Raw-asset SHA-256 digests recorded by these protocols.
 
     Returns:
@@ -523,7 +523,7 @@ def create_dataset(
     extra_kwargs = _with_data_dirs(ds_config, data_dir)
 
     protocol = None
-    if name_lower in {"indoor67", "fmd"}:
+    if name_lower in {"tf_flowers", "fmd"}:
         protocol = build_dataset_protocol(
             name_lower,
             dataset_cls(split=None, **extra_kwargs),

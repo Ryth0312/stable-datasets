@@ -14,76 +14,6 @@ from stable_datasets.schema import ClassLabel, DatasetInfo, Features, Image, Val
 
 
 FMD_NAMES = ["fabric", "foliage", "glass", "leather", "metal", "paper", "plastic", "stone", "water", "wood"]
-# Audited official list counts, not the paper's nominal 80/20 per-class ratio.
-INDOOR_TRAIN_COUNTS = {
-    "airport_inside": 80,
-    "artstudio": 80,
-    "auditorium": 82,
-    "bakery": 81,
-    "bar": 82,
-    "bathroom": 82,
-    "bedroom": 79,
-    "bookstore": 80,
-    "bowling": 80,
-    "buffet": 80,
-    "casino": 81,
-    "children_room": 82,
-    "church_inside": 81,
-    "classroom": 82,
-    "cloister": 80,
-    "closet": 82,
-    "clothingstore": 82,
-    "computerroom": 82,
-    "concert_hall": 80,
-    "corridor": 79,
-    "deli": 81,
-    "dentaloffice": 79,
-    "dining_room": 82,
-    "elevator": 79,
-    "fastfood_restaurant": 83,
-    "florist": 81,
-    "gameroom": 80,
-    "garage": 82,
-    "greenhouse": 80,
-    "grocerystore": 79,
-    "gym": 82,
-    "hairsalon": 79,
-    "hospitalroom": 80,
-    "inside_bus": 77,
-    "inside_subway": 79,
-    "jewelleryshop": 78,
-    "kindergarden": 80,
-    "kitchen": 79,
-    "laboratorywet": 78,
-    "laundromat": 78,
-    "library": 80,
-    "livingroom": 80,
-    "lobby": 80,
-    "locker_room": 79,
-    "mall": 80,
-    "meeting_room": 78,
-    "movietheater": 80,
-    "museum": 77,
-    "nursery": 80,
-    "office": 79,
-    "operating_room": 81,
-    "pantry": 80,
-    "poolinside": 80,
-    "prisoncell": 80,
-    "restaurant": 80,
-    "restaurant_kitchen": 77,
-    "shoeshop": 81,
-    "stairscase": 80,
-    "studiomusic": 81,
-    "subway": 79,
-    "toystore": 78,
-    "trainstation": 80,
-    "tv_studio": 82,
-    "videostore": 78,
-    "waitingroom": 79,
-    "warehouse": 79,
-    "winecellar": 79,
-}
 
 
 def _dataset(class_names, records):
@@ -107,18 +37,6 @@ def _fmd():
             ],
         )
     }
-
-
-def _indoor67():
-    names = list(INDOOR_TRAIN_COUNTS)
-    records = {"train": [], "test": []}
-    for label, (name, train_count) in enumerate(INDOOR_TRAIN_COUNTS.items()):
-        for index in range(100):
-            role = "train" if index < train_count else "test"
-            records[role].append(
-                {"image_id": f"{name}/image {index:03}.jpg", "label": label, "image": b"not an image"}
-            )
-    return {split: _dataset(names, rows) for split, rows in records.items()}
 
 
 def _ids(dataset):
@@ -162,112 +80,6 @@ def test_fmd_counts_roles_and_original_collection_preserved():
     assert protocol.manifest["source_fingerprints"] == {}
     assert protocol.manifest["source_fingerprints_status"] == "not_verified"
     assert not protocol.manifest["source_fingerprints_complete"]
-
-
-def test_indoor67_preserves_uneven_official_membership_and_holds_out_16_per_class():
-    splits = _indoor67()
-    original_train = set(_ids(splits["train"]))
-    original_test = set(_ids(splits["test"]))
-    protocol = build_dataset_protocol("indoor67", splits)
-    _assert_partition(protocol, {"train_fit": 4288, "validation": 1072, "train_full": 5360, "test": 1340})
-    assert set(_ids(protocol.train_full)) == original_train
-    assert set(_ids(protocol.test)) == original_test
-    counts = protocol.manifest["per_class_counts"]
-    assert counts["source_train"] == counts["train_full"] == INDOOR_TRAIN_COUNTS
-    assert (
-        counts["source_test"] == counts["test"] == {name: 100 - count for name, count in INDOOR_TRAIN_COUNTS.items()}
-    )
-    assert counts["validation"] == dict.fromkeys(INDOOR_TRAIN_COUNTS, 16)
-    assert counts["train_fit"] == {name: count - 16 for name, count in INDOOR_TRAIN_COUNTS.items()}
-    assert counts["train_fit"]["fastfood_restaurant"] == 67
-    assert counts["train_fit"]["inside_bus"] == 61
-    assert len(splits["train"]) == 5360
-    assert len(splits["test"]) == 1340
-
-
-def test_indoor67_input_order_independent_and_test_membership_unchanged_across_seeds():
-    splits = _indoor67()
-    first = build_dataset_protocol("indoor67", splits)
-    reordered = {name: dataset.select(list(reversed(range(len(dataset))))) for name, dataset in splits.items()}
-    reordered_protocol = build_dataset_protocol("indoor67", reordered)
-    assert first.manifest == reordered_protocol.manifest
-    for role in first.manifest["counts"]:
-        assert _ids(getattr(first, role)) == _ids(getattr(reordered_protocol, role))
-    second_seed = build_dataset_protocol("indoor67", splits, split_seed=43)
-    assert set(_ids(first.validation)) != set(_ids(second_seed.validation))
-    assert _ids(first.train_full) == _ids(second_seed.train_full)
-    assert _ids(first.test) == _ids(second_seed.test)
-
-
-def test_indoor67_inner_stage_golden_assignment():
-    protocol = build_dataset_protocol("indoor67", _indoor67())
-    assert [image_id for image_id in _ids(protocol.validation) if image_id.startswith("auditorium/")] == [
-        "auditorium/image 005.jpg",
-        "auditorium/image 007.jpg",
-        "auditorium/image 015.jpg",
-        "auditorium/image 017.jpg",
-        "auditorium/image 020.jpg",
-        "auditorium/image 024.jpg",
-        "auditorium/image 035.jpg",
-        "auditorium/image 049.jpg",
-        "auditorium/image 052.jpg",
-        "auditorium/image 053.jpg",
-        "auditorium/image 054.jpg",
-        "auditorium/image 058.jpg",
-        "auditorium/image 061.jpg",
-        "auditorium/image 066.jpg",
-        "auditorium/image 073.jpg",
-        "auditorium/image 076.jpg",
-    ]
-
-
-def test_indoor67_rejects_cross_split_overlap():
-    splits = _indoor67()
-    splits["test"] = _change_row(splits["test"], 0, image_id="airport_inside/image 000.jpg")
-    with pytest.raises(ValueError, match="official train/test image_ids overlap"):
-        build_dataset_protocol("indoor67", splits)
-
-
-def test_indoor67_rejects_different_class_mappings():
-    splits = _indoor67()
-    splits["test"] = _dataset(list(reversed(INDOOR_TRAIN_COUNTS)), splits["test"].table.to_pylist())
-    with pytest.raises(ValueError, match="ClassLabel names do not match"):
-        build_dataset_protocol("indoor67", splits)
-
-
-def test_indoor67_rejects_incomplete_official_totals():
-    splits = _indoor67()
-    splits["test"] = splits["test"].select(range(1339))
-    with pytest.raises(ValueError, match="official totals train=5360/test=1340"):
-        build_dataset_protocol("indoor67", splits)
-
-
-def test_indoor67_rejects_wrong_combined_class_counts():
-    splits = _indoor67()
-    splits["test"] = _change_row(splits["test"], 0, label=1)
-    with pytest.raises(ValueError, match="train \\+ test: expected 100 samples"):
-        build_dataset_protocol("indoor67", splits)
-
-
-def test_indoor67_rejects_missing_test_collection():
-    with pytest.raises(ValueError, match="expected splits"):
-        build_dataset_protocol("indoor67", {"train": _indoor67()["train"]})
-
-
-def test_indoor67_rejects_missing_test_class_despite_matching_totals():
-    splits = _indoor67()
-    train_rows = splits["train"].table.to_pylist()
-    test_rows = splits["test"].table.to_pylist()
-    moved_to_train = [row for row in test_rows if row["label"] == 0]
-    moved_to_test = [row for row in train_rows if row["label"] == 1][: len(moved_to_train)]
-    moved_ids = {row["image_id"] for row in moved_to_test + moved_to_train}
-    names = list(INDOOR_TRAIN_COUNTS)
-    altered = {
-        "train": _dataset(names, [row for row in train_rows if row["image_id"] not in moved_ids] + moved_to_train),
-        "test": _dataset(names, [row for row in test_rows if row["image_id"] not in moved_ids] + moved_to_test),
-    }
-    with pytest.raises(ValueError, match="official test is missing class 'airport_inside'"):
-        build_dataset_protocol("indoor67", altered)
 
 
 def test_fmd_protocol_golden_assignment():
@@ -413,11 +225,11 @@ def _patch_builder(monkeypatch, splits):
 def test_new_benchmarks_are_explicit_without_changing_dataset_all():
     from benchmarks.dataset import get_image_dataset_names
 
-    assert {"indoor67", "fmd"} <= set(get_image_dataset_names())
-    assert not {"indoor67", "fmd"} & set(get_image_dataset_names(include_results_only=True))
+    assert {"tf_flowers", "fmd"} <= set(get_image_dataset_names())
+    assert not {"tf_flowers", "fmd"} & set(get_image_dataset_names(include_results_only=True))
 
 
-@pytest.mark.parametrize("name,make_splits", [("fmd", _fmd), ("indoor67", _indoor67)])
+@pytest.mark.parametrize("name,make_splits", [("fmd", _fmd)])
 def test_benchmark_uses_protocol_without_legacy_fallback(monkeypatch, tmp_path, name, make_splits):
     from benchmarks import dataset as benchmark_dataset
 
@@ -439,7 +251,7 @@ def test_benchmark_uses_protocol_without_legacy_fallback(monkeypatch, tmp_path, 
         data_dir=str(tmp_path),
         split_seed=43,
     )
-    assert config.num_classes == (67 if name == "indoor67" else 10)
+    assert config.num_classes == 10
     assert config.channels == 3
     assert _ids(data.train.dataset) == _ids(expected.train_fit)
     assert _ids(data.val.dataset) == _ids(expected.validation)

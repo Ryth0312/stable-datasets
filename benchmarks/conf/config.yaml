@@ -5,8 +5,8 @@ defaults:
 backbone: vit_small_patch16_224
 dataset: cifar10
 seed: null  # set to an int to run a seeded ablation (tagged "seed" in wandb)
-split_seed: 42  # independent Indoor67/FMD experimental split seed
-source_fingerprints: {}  # required for Indoor67/FMD runs: SOURCE.assets key -> audited SHA-256 hex
+split_seed: 42  # independent FMD/TF Flowers experimental split seed
+source_fingerprints: {}  # required for FMD/TF Flowers runs: SOURCE.assets key -> audited SHA-256 hex
 run_tag: null  # extra wandb tag for this run (e.g. "final_runs")
 data_dir: ${oc.env:STABLE_DATASETS_ROOT,/oscar/home/sboughan/scratch/.stable-datasets}  # set STABLE_DATASETS_ROOT in shell to relocate dataset+ckpt root
 smoke_test: false  # run 3 train + 3 val batches for 1 epoch to verify the pipeline works

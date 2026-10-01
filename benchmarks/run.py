@@ -148,7 +148,7 @@ def _save_dataset_protocol_manifest(data, output_dir: str) -> None:
         return
     if not manifest["source_fingerprints_complete"]:
         raise ValueError(
-            "Indoor67/FMD benchmark runs require source_fingerprints for every raw asset; "
+            "FMD/TF Flowers benchmark runs require source_fingerprints for every raw asset; "
             "supply the audited SHA-256 hex digests keyed by SOURCE.assets."
         )
     path = Path(output_dir) / "dataset_protocol.json"
@@ -163,7 +163,7 @@ def _save_dataset_protocol_manifest(data, output_dir: str) -> None:
 
 
 def _get_run_checkpoint_dir(data, checkpoint_root: str, run_dir_name: str) -> str:
-    """Keep Indoor67/FMD checkpoints isolated by their complete protocol."""
+    """Keep FMD/TF Flowers checkpoints isolated by their complete protocol."""
     run_dir = os.path.join(checkpoint_root, run_dir_name)
     manifest = getattr(data, "dataset_protocol_manifest", None)
     if manifest is None:

@@ -137,6 +137,28 @@ def _fit_inputs():
     return features, labels, image_ids, manifest
 
 
+def test_conflicting_duplicate_records_retain_both_original_labels_in_metrics(tmp_path):
+    import csv
+
+    features, labels, image_ids, manifest = _fit_inputs()
+    # A synthetic conflict group tests metric semantics without observing the
+    # real release's held-out images or moving its actual conflict group.
+    features[-1] = features[-2]
+    image_ids[-2:] = ["roses/shared.jpg", "tulips/shared.jpg"]
+    manifest["class_names"] = ["roses", "tulips"]
+    for index in (-2, -1):
+        manifest["records"][index].update(image_id=image_ids[index], group_id="synthetic-conflict")
+    metrics = evaluation.fit_and_evaluate(features, labels, image_ids, manifest, tmp_path)
+    assert metrics["counts"]["test"] == 2
+    assert metrics["test_per_class"] == {"roses": 1, "tulips": 1}
+    assert metrics["test_micro_top1"] == metrics["test_macro_accuracy"] == 0.5
+    with (tmp_path / "predictions.csv").open(newline="") as stream:
+        predictions = list(csv.DictReader(stream))
+    assert [row["image_id"] for row in predictions] == image_ids[-2:]
+    assert [int(row["true_label"]) for row in predictions] == [0, 1]
+    assert predictions[0]["predicted_label"] == predictions[1]["predicted_label"]
+
+
 def test_selection_scaler_refit_test_isolation_and_ties(monkeypatch, tmp_path):
     SCALER_FITS.clear()
     CLASSIFIER_PREDICTIONS.clear()
@@ -289,7 +311,7 @@ def fake_run(monkeypatch, tmp_path):
         return model
 
     monkeypatch.setattr(images, "FMD", FakeBuilder, raising=False)
-    monkeypatch.setattr(images, "Indoor67", FakeBuilder, raising=False)
+    monkeypatch.setattr(images, "TFFlowers", FakeBuilder, raising=False)
     monkeypatch.setattr(utils, "download", lambda *args, **kwargs: source_file)
     monkeypatch.setattr(evaluation, "WEIGHTS", weights)
     monkeypatch.setattr(evaluation, "resnet50", fake_resnet)
@@ -348,7 +370,7 @@ def test_main_native_fmd_fake_model_end_to_end_and_feature_cache(fake_run, monke
     assert cache.read_bytes() == cache_before
 
 
-@pytest.mark.parametrize("dataset, unused_class", [("indoor67", "FMD"), ("fmd", "Indoor67")])
+@pytest.mark.parametrize("dataset, unused_class", [("tf_flowers", "FMD"), ("fmd", "TFFlowers")])
 def test_main_does_not_require_the_other_dataset_builder(fake_run, monkeypatch, dataset, unused_class):
     from stable_datasets import images, utils
 
@@ -409,7 +431,7 @@ def test_result_helpers_do_not_overwrite_existing_files(tmp_path):
 
 
 def _code_files(root):
-    paths = ["examples/evaluate_image_classification.py", "stable_datasets/images/indoor67.py"]
+    paths = ["examples/evaluate_image_classification.py", "stable_datasets/images/tf_flowers.py"]
     for name in paths:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -431,7 +453,7 @@ def test_code_fingerprint_tracks_relevant_untracked_bytes(monkeypatch, tmp_path)
     monkeypatch.setattr(evaluation.subprocess, "check_output", fake_git)
     first = evaluation.code_fingerprint(tmp_path)
     assert first["implementation_sha256"] == first["untracked_source_sha256"] == files
-    (tmp_path / "stable_datasets/images/indoor67.py").write_text("# changed implementation\n", encoding="utf-8")
+    (tmp_path / "stable_datasets/images/tf_flowers.py").write_text("# changed implementation\n", encoding="utf-8")
     second = evaluation.code_fingerprint(tmp_path)
     assert first["head"] == second["head"]
     assert first["diff_sha256"] != second["diff_sha256"]
@@ -442,13 +464,13 @@ def test_export_snapshot_is_verified_without_git(monkeypatch, tmp_path, corrupti
     files = _code_files(tmp_path)
     snapshot = {"head": "a" * 40, "diff_sha256": "b" * 64, "files": files, "description": "test snapshot"}
     if corruption == "hash":
-        files["stable_datasets/images/indoor67.py"] = "0" * 64
+        files["stable_datasets/images/tf_flowers.py"] = "0" * 64
     elif corruption == "unsafe_path":
         files["../outside.py"] = "0" * 64
     elif corruption == "missing":
         files["missing.py"] = "0" * 64
     elif corruption == "omitted":
-        del files["stable_datasets/images/indoor67.py"]
+        del files["stable_datasets/images/tf_flowers.py"]
     (tmp_path / "CODE_SNAPSHOT.json").write_text(json.dumps(snapshot), encoding="utf-8")
 
     def no_git(command, **kwargs):
