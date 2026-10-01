@@ -89,5 +89,5 @@ Dataset Additions Under Validation
    :maxdepth: 1
    :caption: Image Classification Additions
 
-   indoor67
+   tf_flowers
    fmd

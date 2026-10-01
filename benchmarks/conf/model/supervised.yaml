@@ -6,7 +6,7 @@ params:
     max_epochs: 50
     accumulate_grad_batches: 1
   # Bounded integration runs; final test evaluation uses the separate reference protocol.
-  indoor67:
+  tf_flowers:
     batch_size: 32
     max_epochs: 20
   fmd:

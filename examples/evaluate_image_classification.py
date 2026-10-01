@@ -1,4 +1,4 @@
-"""Frozen ImageNet-supervised ResNet-50 + linear classification for Indoor67/FMD.
+"""Frozen ImageNet-supervised ResNet-50 + linear classification for FMD/TF Flowers.
 
 Run with ``python -m examples.evaluate_image_classification --help``.
 All datasets, model weights, features, and results must live outside the checkout.
@@ -55,7 +55,8 @@ def code_fingerprint(root=None):
     implementation_files = [
         "examples/evaluate_image_classification.py",
         "benchmarks/dataset_protocols.py",
-        "stable_datasets/images/indoor67.py",
+        "benchmarks/tf_flowers_protocol.py",
+        "stable_datasets/images/tf_flowers.py",
         "stable_datasets/images/fmd.py",
         "stable_datasets/features/image.py",
         "stable_datasets/schema.py",
@@ -291,7 +292,7 @@ def _outside_checkout(path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", choices=("indoor67", "fmd"), required=True)
+    parser.add_argument("--dataset", choices=("tf_flowers", "fmd"), required=True)
     parser.add_argument("--split-seed", type=int, default=42)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -327,7 +328,7 @@ def main(argv=None):
         from stable_datasets import images
         from stable_datasets.utils import download
 
-        builder = getattr(images, {"indoor67": "Indoor67", "fmd": "FMD"}[args.dataset])
+        builder = getattr(images, {"tf_flowers": "TFFlowers", "fmd": "FMD"}[args.dataset])
         torch.set_num_threads(4)
         torch.hub.set_dir(str(model_dir))
         code = code_fingerprint()

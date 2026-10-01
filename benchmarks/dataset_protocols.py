@@ -103,7 +103,7 @@ def build_dataset_protocol(
     """Create benchmark views without changing the original builder collection.
 
     Args:
-        dataset_name: ``"indoor67"`` or ``"fmd"``.
+        dataset_name: ``"fmd"`` or ``"tf_flowers"``.
         splits: The untransformed builder result from ``split=None``.
         split_seed: Seed used in the versioned SHA-256 ranking, independent of
             training randomness. The default protocol uses 42.
@@ -116,18 +116,22 @@ def build_dataset_protocol(
         Fit/validation/refit/test views and a JSON-serializable manifest. Each
         manifest record has one disjoint role and an explicit refit membership.
     """
-    if not isinstance(dataset_name, str) or dataset_name.lower() not in {"indoor67", "fmd"}:
+    if isinstance(dataset_name, str) and dataset_name.lower() == "tf_flowers":
+        from .tf_flowers_protocol import build_tf_flowers_protocol
+
+        return build_tf_flowers_protocol(splits, split_seed=split_seed, source_fingerprints=source_fingerprints)
+    if not isinstance(dataset_name, str) or dataset_name.lower() != "fmd":
         raise ValueError(f"Unsupported classification protocol: {dataset_name!r}.")
     dataset_name = dataset_name.lower()
     if isinstance(split_seed, bool) or not isinstance(split_seed, Integral):
         raise ValueError("split_seed must be an integer.")
     split_seed = int(split_seed)
-    expected_splits = {"train", "test"} if dataset_name == "indoor67" else {"train"}
+    expected_splits = {"train"}
     if set(splits) != expected_splits:
         raise ValueError(f"{dataset_name}: expected splits {sorted(expected_splits)}, got {sorted(splits)}.")
 
     fingerprints = dict(source_fingerprints or {})
-    expected_assets = {"images", "train_list", "test_list"} if dataset_name == "indoor67" else {"archive"}
+    expected_assets = {"archive"}
     if set(fingerprints) - expected_assets:
         raise ValueError(
             f"{dataset_name}: unexpected source fingerprint assets: {sorted(set(fingerprints) - expected_assets)}."
@@ -146,7 +150,7 @@ def build_dataset_protocol(
     if not isinstance(label_feature, ClassLabel):
         raise ValueError("train: label must be a ClassLabel with explicit class names.")
     class_names = list(label_feature.names)
-    num_classes = 67 if dataset_name == "indoor67" else 10
+    num_classes = 10
     if (
         len(class_names) != num_classes
         or any(not isinstance(name, str) or not name for name in class_names)
@@ -156,45 +160,19 @@ def build_dataset_protocol(
 
     train_records = _read_records(splits["train"], "train", class_names)
     test_records = []
-    if dataset_name == "indoor67":
-        test_records = _read_records(splits["test"], "test", class_names)
-        overlap = {record.image_id for record in train_records} & {record.image_id for record in test_records}
-        if overlap:
-            raise ValueError(f"indoor67: official train/test image_ids overlap: {min(overlap)!r}.")
-        if len(train_records) != 5360 or len(test_records) != 1340:
-            raise ValueError(
-                f"indoor67: expected official totals train=5360/test=1340, found {len(train_records)}/{len(test_records)}."
-            )
-        # Official lists are not uniformly 80/20: preserve their actual membership.
-        _validate_class_counts(train_records + test_records, class_names, 100, "train + test")
-        test_labels = {record.label for record in test_records}
-        for label, class_name in enumerate(class_names):
-            if label not in test_labels:
-                raise ValueError(f"indoor67: official test is missing class {class_name!r}.")
-    else:
-        _validate_class_counts(train_records, class_names, 100, "train")
+    _validate_class_counts(train_records, class_names, 100, "train")
 
     assignments = {"train_fit": [], "validation": [], "train_full": [], "test": []}
     for label in range(len(class_names)):
         class_records = [record for record in train_records if record.label == label]
-        if dataset_name == "indoor67":
-            if len(class_records) <= 16:
-                raise ValueError(
-                    f"indoor67: class {class_names[label]!r} needs more than 16 official training images."
-                )
-            train_full = class_records
-            validation_count = 16
-        else:
-            ranked_outer = _rank(class_records, dataset_name, "outer", split_seed)
-            train_full = ranked_outer[:50]
-            validation_count = 10
-            assignments["test"].extend(ranked_outer[50:])
+        ranked_outer = _rank(class_records, dataset_name, "outer", split_seed)
+        train_full = ranked_outer[:50]
+        validation_count = 10
+        assignments["test"].extend(ranked_outer[50:])
         ranked_inner = _rank(train_full, dataset_name, "inner", split_seed)
         assignments["validation"].extend(ranked_inner[:validation_count])
         assignments["train_fit"].extend(ranked_inner[validation_count:])
         assignments["train_full"].extend(train_full)
-    if dataset_name == "indoor67":
-        assignments["test"] = test_records
 
     assignments = {role: _canonical_order(records) for role, records in assignments.items()}
     role_by_id = {
@@ -229,9 +207,6 @@ def build_dataset_protocol(
         ],
     }
     views = {
-        role: splits["test" if dataset_name == "indoor67" and role == "test" else "train"].select(
-            [record.index for record in records]
-        )
-        for role, records in assignments.items()
+        role: splits["train"].select([record.index for record in records]) for role, records in assignments.items()
     }
     return DatasetProtocol(**views, manifest=manifest)

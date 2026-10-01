@@ -32,7 +32,6 @@ from .hasy_v2 import HASYv2
 from .imagenet_1k import ImageNet1K
 from .imagenet_10 import Imagenette
 from .imagenet_100 import ImageNet100
-from .indoor67 import Indoor67
 from .k_mnist import KMNIST
 from .linnaeus5 import Linnaeus5
 from .med_mnist import MedMNIST
@@ -45,6 +44,7 @@ from .shapes3d import Shapes3D
 from .small_norb import SmallNORB
 from .stl10 import STL10
 from .svhn import SVHN
+from .tf_flowers import TFFlowers
 from .tiny_imagenet import TinyImagenet
 from .tiny_imagenet_c import TinyImagenetC
 
@@ -80,7 +80,7 @@ __all__ = [
     "ImageNet1K",
     "ImageNet100",
     "Imagenette",
-    "Indoor67",
+    "TFFlowers",
     "KMNIST",
     "Linnaeus5",
     "MedMNIST",
