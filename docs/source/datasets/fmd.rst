@@ -1,6 +1,16 @@
 FMD
 ===
 
+.. figure:: teasers/fmd_teaser.png
+   :alt: Five FMD archive photographs showing fabric, glass, stone, metal and wood, with photographer credits.
+   :align: center
+   :width: 100%
+
+   Five released FMD samples, resized without cropping and arranged for display.
+   Photographer credits and licenses follow the matching entries in the
+   `official FMD gallery <https://people.csail.mit.edu/lavanya/fmd.html>`_.
+   See the sample IDs and credits under :ref:`fmd-teaser-credits`.
+
 .. note::
    The native builder preserves the released RGB/L mask modes and decoded
    pixels in lossless PNG storage. The official ZIP has been downloaded and
@@ -188,9 +198,46 @@ Use and Citation
 
 The source page lists Creative Commons terms, image credits, and exceptions
 with different licenses. Consult that page and the original image attributions;
-this contribution does not assert one uniform dataset license. Per-image
-conditions remain unresolved, and this contribution does not redistribute
-photographs or masks.
+this contribution does not assert one uniform dataset license. The documentation
+includes the five reduced-size photograph previews credited below. It does not
+bundle the dataset archive, full-resolution photographs or masks. Per-image
+conditions for the rest of the collection remain unresolved.
+
+.. _fmd-teaser-credits:
+
+Teaser Credits
+~~~~~~~~~~~~~~
+
+The teaser uses the first displayed example in each of five categories from
+the `official gallery <https://people.csail.mit.edu/lavanya/fmd.html>`_. That
+page lists the following photographers and identifies these entries as
+`CC BY 2.0 <https://creativecommons.org/licenses/by/2.0/>`_. Its stated Foliage
+exceptions do not concern these five images. The filenames below identify the
+released ZIP samples; the links identify the matching gallery photographs.
+The archive and gallery JPEGs are not byte-identical. The teaser was generated
+from the checksum-verified archive, with only aspect-ratio-preserving display
+resizing, padding and labels added; no cropping or model preprocessing was used.
+
+.. list-table:: Photograph credits, from left to right
+   :header-rows: 1
+   :widths: 70 30
+
+   * - Released image ID / gallery photograph
+     - Photographer credited by FMD
+   * - `fabric/fabric_moderate_014_new.jpg <https://people.csail.mit.edu/lavanya/images/fmd/fabric/fabric_moderate_014_new.jpg>`_
+     - Lollyknit
+   * - `glass/glass_moderate_005_new.jpg <https://people.csail.mit.edu/lavanya/images/fmd/glass/glass_moderate_005_new.jpg>`_
+     - Duke LeNoir
+   * - `stone/stone_moderate_010_new.jpg <https://people.csail.mit.edu/lavanya/images/fmd/stone/stone_moderate_010_new.jpg>`_
+     - Andrew
+   * - `metal/metal_moderate_020_new.jpg <https://people.csail.mit.edu/lavanya/images/fmd/metal/metal_moderate_020_new.jpg>`_
+     - Kevin Dooley
+   * - `wood/wood_moderate_003_new.jpg <https://people.csail.mit.edu/lavanya/images/fmd/wood/wood_moderate_003_new.jpg>`_
+     - Jason Scargz
+
+The author names are preserved as listed; no unverified Flickr profile URLs
+are supplied. These display examples are independent of model selection and
+do not change the frozen data or evaluation protocol.
 
 Reference: L. Sharan, R. Rosenholtz, and E. H. Adelson, *Accuracy and speed of
 material categorization in real-world images*, Journal of Vision 14(9),

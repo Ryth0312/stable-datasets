@@ -1,6 +1,15 @@
 TensorFlow Flowers
 ==================
 
+.. figure:: teasers/tf_flowers_teaser.png
+   :alt: Five released TensorFlow Flowers photographs showing daisy, dandelion, roses, sunflowers and tulips, with photographer credits.
+   :align: center
+   :width: 100%
+
+   One released image per class, resized without cropping and arranged for
+   display. Original labels and the archive's photographer credits are retained.
+   See the sample IDs, source links and license under :ref:`tf-flowers-teaser-credits`.
+
 .. note::
    The official archive passed source preflight on September 30, 2026:
    its published checksum, complete archive, all 3,670 decoded photographs,
@@ -483,7 +492,39 @@ Retain the original license and per-image photographer credits when using
 the photographs. The sample's ``attribution`` field preserves the original
 line, including spacing, Unicode and the supplied URL. The image license is
 distinct from the TFDS source-code license and the TensorFlow website's
-content license. Raw photographs are not committed to this repository.
+content license. The documentation includes the five reduced-size photograph
+previews credited below; the dataset archive and full-resolution photographs
+are not bundled with the repository.
+
+.. _tf-flowers-teaser-credits:
+
+Teaser Credits
+~~~~~~~~~~~~~~
+
+The teaser uses the lexicographically first full image ID in each class of
+the checksum-verified archive, independently of model outputs. All five
+photographers and source URLs below come from its original ``LICENSE.txt``;
+the declared license is `CC BY 2.0 <https://creativecommons.org/licenses/by/2.0/>`_.
+Only aspect-ratio-preserving display resizing, padding and labels were added;
+no cropping or model preprocessing was used. The original photographs,
+labels, experimental groups and frozen manifests are unchanged.
+
+.. list-table:: Photograph credits, from left to right
+   :header-rows: 1
+   :widths: 65 35
+
+   * - Released image ID
+     - Photographer / original source
+   * - ``daisy/100080576_f52e8ee070_n.jpg``
+     - `mario <https://www.flickr.com/photos/64738468@N00/100080576/>`_
+   * - ``dandelion/10043234166_e6dd915111_n.jpg``
+     - `Vlastimil Koutecký <https://www.flickr.com/photos/vlastimil_koutecky/10043234166/>`_
+   * - ``roses/10090824183_d02c613f10_m.jpg``
+     - `Von Fumetti <https://www.flickr.com/photos/104286287@N06/10090824183/>`_
+   * - ``sunflowers/1008566138_6927679c8a.jpg``
+     - `liz west <https://www.flickr.com/photos/calliope/1008566138/>`_
+   * - ``tulips/100930342_92e8746431_n.jpg``
+     - `Jackie Curry <https://www.flickr.com/photos/octoberdog/100930342/>`_
 
 Dataset reference: TensorFlow, *TensorFlow Flowers (tf_flowers)*,
 `dataset catalog <https://www.tensorflow.org/datasets/catalog/tf_flowers>`_.
