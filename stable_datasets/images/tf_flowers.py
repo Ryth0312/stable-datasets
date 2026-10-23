@@ -172,6 +172,7 @@ class TFFlowers(BaseDatasetBuilder):
     )
 
     def __new__(cls, *args, split=Split.TRAIN, **kwargs):
+        """Validate the requested split before loading the native collection."""
         if split not in (None, Split.TRAIN):
             raise ValueError(f"TFFlowers only provides the unsplit 'train' container, got split={split!r}")
         return super().__new__(cls, *args, split=split, **kwargs)
