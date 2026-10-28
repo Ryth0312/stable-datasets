@@ -1,8 +1,7 @@
-"""Offline native TensorFlow Flowers tests and an opt-in local-release audit."""
+"""Native TensorFlow Flowers tests and public-download integration coverage."""
 
 import hashlib
 import io
-import os
 import tarfile
 from collections import Counter
 from pathlib import Path
@@ -11,7 +10,7 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 
-from stable_datasets import utils
+from stable_datasets import StableDataset, StableDatasetDict, utils
 from stable_datasets.images import tf_flowers
 from stable_datasets.images.tf_flowers import TFFLOWERS_CLASS_NAMES, TFFlowers
 
@@ -86,27 +85,28 @@ def release(tmp_path):
     return archive_path, entries, expected, dict(zip(image_ids, credits))
 
 
-def _load(monkeypatch, tmp_path, archive_path, *, checksum=None, **kwargs):
+def _mock_download(monkeypatch, tmp_path, archive_path, *, checksum=None):
     # Only the raw download boundary and expected checksum change for tiny
     # fixtures. The real parser, generator, encoding and cache all run.
-    monkeypatch.setattr(
-        TFFlowers.SOURCE.assets["archive"], "checksum", "sha256:" + (checksum or _sha256(archive_path))
-    )
+    monkeypatch.setattr(TFFlowers.SOURCE.assets["train"], "checksum", "sha256:" + (checksum or _sha256(archive_path)))
 
     def local_download(specs, dest_folder):
         assert Path(dest_folder) == tmp_path / "downloads"
-        assert list(specs) == [TFFlowers.SOURCE.assets["archive"]]
+        assert list(specs) == [TFFlowers.SOURCE.assets["train"]]
         return [archive_path]
 
-    monkeypatch.setattr(tf_flowers, "bulk_download", local_download)
-    return TFFlowers(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
+    monkeypatch.setattr(utils, "bulk_download", local_download)
+
+
+def _load(monkeypatch, tmp_path, archive_path, *, checksum=None, split="train"):
+    _mock_download(monkeypatch, tmp_path, archive_path, checksum=checksum)
+    return TFFlowers(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", split=split)
 
 
 def _forbid_raw_access(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("warm TFFlowers cache must not download, hash, or reopen raw assets")
 
-    monkeypatch.setattr(tf_flowers, "bulk_download", forbidden)
     monkeypatch.setattr(utils, "bulk_download", forbidden)
     monkeypatch.setattr(utils, "download", forbidden)
     monkeypatch.setattr(utils.requests.sessions.Session, "request", forbidden)
@@ -127,10 +127,23 @@ def test_metadata_does_not_access_raw_assets(monkeypatch):
     assert builder.info.features["image"].encode_format == "PNG"
     assert builder.info.supervised_keys == ("image", "label")
     assert builder.info.license == LICENSE_HEADER
-    assert set(builder.SOURCE.assets) == {"archive"}
-    asset = builder.SOURCE.assets["archive"]
+    assert set(builder.SOURCE.assets) == {"train"}
+    asset = builder.SOURCE.assets["train"]
     assert asset.url == "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"
     assert asset.checksum == "sha256:" + ARCHIVE_SHA256
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"split": None}, {"split": "train"}])
+def test_constructor_split_contract(monkeypatch, tmp_path, release, kwargs):
+    archive_path, _, expected, _ = release
+    _mock_download(monkeypatch, tmp_path, archive_path)
+    result = TFFlowers(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
+    if kwargs.get("split") is None:
+        assert isinstance(result, StableDatasetDict)
+        assert set(result) == {"train"}
+        result = result["train"]
+    assert isinstance(result, StableDataset)
+    assert len(result) == len(expected)
 
 
 def test_pixels_attribution_original_labels_and_warm_cache(monkeypatch, tmp_path, release):
@@ -178,9 +191,11 @@ def test_pixels_attribution_original_labels_and_warm_cache(monkeypatch, tmp_path
     _forbid_raw_access(monkeypatch)
     for kwargs in ({}, {"split": "train"}, {"split": None}):
         warm = TFFlowers(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
-        if kwargs.get("split", "train") is None:
+        if kwargs.get("split") is None:
+            assert isinstance(warm, StableDatasetDict)
             assert set(warm) == {"train"}
             warm = warm["train"]
+        assert isinstance(warm, StableDataset)
         assert list(warm.with_format("raw")) == list(dataset.with_format("raw"))
         assert warm.info.license == LICENSE_HEADER
     assert cache_files == {p: (p.stat().st_mtime_ns, p.stat().st_size) for p in cache_files}
@@ -194,10 +209,11 @@ def test_single_optional_dot_archive_prefix(monkeypatch, tmp_path, release):
 
 
 @pytest.mark.parametrize("split", ["test", "validation", "archive"])
-def test_unknown_split_fails_before_download(monkeypatch, split):
+def test_unknown_split_uses_base_error_with_warm_cache(monkeypatch, tmp_path, release, split):
+    _load(monkeypatch, tmp_path, release[0])
     _forbid_raw_access(monkeypatch)
-    with pytest.raises(ValueError, match="unsplit 'train' container"):
-        TFFlowers(split=split)
+    with pytest.raises(ValueError, match=f"Split '{split}' not found. Available: \\['train'\\]"):
+        TFFlowers(split=split, processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads")
 
 
 def test_completed_raw_file_is_rehashed_before_parsing(monkeypatch, tmp_path, release):
@@ -212,7 +228,7 @@ def test_public_source_uses_real_downloader_checksum(monkeypatch, tmp_path, rele
     """Only HTTP and process scheduling are replaced; download and builder run."""
     archive_path, _, expected, credits = release
     content = archive_path.read_bytes()
-    asset = TFFlowers.SOURCE.assets["archive"]
+    asset = TFFlowers.SOURCE.assets["train"]
     checksum = hashlib.sha256(content).hexdigest() if valid_checksum else "0" * 64
     monkeypatch.setattr(asset, "checksum", "sha256:" + checksum)
     requests_seen = []
@@ -234,8 +250,8 @@ def test_public_source_uses_real_downloader_checksum(monkeypatch, tmp_path, rele
         return [utils.download(spec, dest_folder=dest_folder, progress_bar=False) for spec in specs]
 
     monkeypatch.setattr(utils.requests.sessions.Session, "request", http_response)
-    monkeypatch.setattr(tf_flowers, "bulk_download", sequential_download)
-    kwargs = {"download_dir": tmp_path / "downloads", "processed_cache_dir": tmp_path / "processed"}
+    monkeypatch.setattr(utils, "bulk_download", sequential_download)
+    kwargs = {"split": "train", "download_dir": tmp_path / "downloads", "processed_cache_dir": tmp_path / "processed"}
     if valid_checksum:
         dataset = TFFlowers(**kwargs)
         assert len(dataset) == len(expected)
@@ -361,19 +377,22 @@ def test_empty_collection_fails(monkeypatch, tmp_path):
         _load(monkeypatch, tmp_path, archive_path)
 
 
-@pytest.mark.large
-def test_tf_flowers_local_release(monkeypatch, tmp_path):
-    """Opt in with STABLE_DATASETS_TF_FLOWERS_ARCHIVE; no network fallback."""
-    local_path = os.environ.get("STABLE_DATASETS_TF_FLOWERS_ARCHIVE")
-    if local_path is None:
-        pytest.skip("Set STABLE_DATASETS_TF_FLOWERS_ARCHIVE to audit an approved local release")
-    archive_path = Path(local_path)
-    assert archive_path.is_file() and archive_path.stat().st_size == 228813984
-    assert _sha256(archive_path) == ARCHIVE_SHA256
-    datasets = _load(monkeypatch, tmp_path, archive_path, split=None)
+def test_tf_flowers_public_release(monkeypatch, tmp_path):
+    """Download the public release through the builder and check every record."""
+    download_dir = tmp_path / "downloads"
+    processed_cache_dir = tmp_path / "processed"
+    assert not download_dir.exists() and not processed_cache_dir.exists()
+    datasets = TFFlowers(processed_cache_dir=processed_cache_dir, download_dir=download_dir)
+    assert isinstance(datasets, StableDatasetDict)
     assert set(datasets) == {"train"}
     dataset = datasets["train"]
+    assert isinstance(dataset, StableDataset)
     assert len(dataset) == 3670
+    archives = list(download_dir.glob("*.tgz"))
+    assert len(archives) == 1
+    archive_path = archives[0]
+    assert archive_path.is_file() and archive_path.stat().st_size == 228813984
+    assert _sha256(archive_path) == ARCHIVE_SHA256
     rows = {row["image_id"]: index for index, row in enumerate(dataset.with_format("raw"))}
     assert len(rows) == 3670
     source_ids, counts, credits = [], Counter(), {}
@@ -389,9 +408,14 @@ def test_tf_flowers_local_release(monkeypatch, tmp_path):
                 image_id = member.name.removeprefix("flower_photos/")
                 source_ids.append(image_id)
                 row = dataset[rows[image_id]]
+                assert set(row) == {"image", "label", "image_id", "attribution"}
+                assert isinstance(row["image_id"], str)
+                assert isinstance(row["attribution"], str)
                 class_name = image_id.split("/")[0]
                 counts[class_name] += 1
                 assert row["label"] == TFFLOWERS_CLASS_NAMES.index(class_name)
+                assert isinstance(row["label"], int) and 0 <= row["label"] < 5
+                assert isinstance(row["image"], PILImage.Image)
                 assert row["image"].mode == "RGB"
                 with PILImage.open(io.BytesIO(archive.extractfile(member).read())) as source:
                     assert row["image"].size == source.size
@@ -407,7 +431,7 @@ def test_tf_flowers_local_release(monkeypatch, tmp_path):
     assert [row["label"] for row in conflict] == [4, 2]
     np.testing.assert_array_equal(np.array(conflict[0]["image"]), np.array(conflict[1]["image"]))
     _forbid_raw_access(monkeypatch)
-    warm = TFFlowers(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads")
+    warm = TFFlowers(split="train", processed_cache_dir=processed_cache_dir, download_dir=download_dir)
     assert len(warm) == 3670
     for original, cached in zip(dataset.with_format("raw"), warm.with_format("raw")):
         assert original == cached

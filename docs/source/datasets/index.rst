@@ -63,7 +63,9 @@ Available Datasets
    e_mnist
    fgvc_aircraft
    flowers102
+   tf_flowers
    food101
+   fmd
    cub200
    country211
    galaxy10
@@ -79,15 +81,4 @@ Available Datasets
    something_something_v2
 
 .. note::
-   Documentation is being added progressively. Check each page's implementation
-   and validation status, including source availability and known limitations.
-
-Dataset Additions Under Validation
-----------------------------------
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Image Classification Additions
-
-   tf_flowers
-   fmd
+   Documentation is being added progressively, as datasets are ready for usage. Please only use datasets found in the documentation.

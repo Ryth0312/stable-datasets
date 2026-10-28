@@ -11,8 +11,7 @@ from PIL import Image as PILImage
 
 from stable_datasets.schema import ClassLabel, DatasetInfo, DatasetSource, DownloadInfo, Features, Value, Version
 from stable_datasets.schema import Image as ImageFeature
-from stable_datasets.splits import Split, SplitGenerator
-from stable_datasets.utils import BaseDatasetBuilder, bulk_download
+from stable_datasets.utils import BaseDatasetBuilder
 
 
 # Preserve the TFDS label order, which is not alphabetical.
@@ -148,7 +147,7 @@ class TFFlowers(BaseDatasetBuilder):
     attribution line accompanies each sample. The original ``LICENSE.txt``
     remains at ``flower_photos/LICENSE.txt`` inside the downloaded archive;
     its opening declaration is also available as ``dataset.info.license``.
-    Experimental grouping and splits belong to the benchmark protocol layer.
+    Evaluation grouping and splits are the caller's responsibility.
     """
 
     VERSION = Version("1.0.0")
@@ -161,7 +160,7 @@ class TFFlowers(BaseDatasetBuilder):
         ),
         license=_LICENSE_DECLARATION,
         assets={
-            "archive": DownloadInfo(
+            "train": DownloadInfo(
                 url="https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz",
                 # Published in the TFDS checksum list at commit
                 # 2dff5ebbf41953c3f8eeb892c6354f98ee4ef564 and verified against
@@ -170,12 +169,6 @@ class TFFlowers(BaseDatasetBuilder):
             )
         },
     )
-
-    def __new__(cls, *args, split=Split.TRAIN, **kwargs):
-        """Validate the requested split before loading the native collection."""
-        if split not in (None, Split.TRAIN):
-            raise ValueError(f"TFFlowers only provides the unsplit 'train' container, got split={split!r}")
-        return super().__new__(cls, *args, split=split, **kwargs)
 
     def _info(self):
         return DatasetInfo(
@@ -197,22 +190,15 @@ class TFFlowers(BaseDatasetBuilder):
             license=self.SOURCE.license,
         )
 
-    def _candidate_splits(self):
-        return [Split.TRAIN]
-
-    def _split_generators(self):
-        paths = bulk_download([self.SOURCE.assets["archive"]], dest_folder=self._raw_download_dir)
-        return [SplitGenerator(name=Split.TRAIN, gen_kwargs={"archive_path": paths[0]})]
-
-    def _generate_examples(self, archive_path):
+    def _generate_examples(self, data_path, split):
         # The shared downloader returns completed cache hits without rehashing;
         # every cold native build verifies the raw archive before parsing it.
-        _verify_archive_checksum(archive_path, self.SOURCE.assets["archive"].checksum)
-        credits = _read_archive_metadata(archive_path)
+        _verify_archive_checksum(data_path, self.SOURCE.assets["train"].checksum)
+        credits = _read_archive_metadata(data_path)
         seen = set()
         # Second sequential pass follows the fixed tar order and decodes one
         # photograph at a time. No per-image archive seeks or extraction.
-        with tarfile.open(archive_path, mode="r|gz") as archive:
+        with tarfile.open(data_path, mode="r|gz") as archive:
             for member in archive:
                 _, image_id = _classify_member(member)
                 if image_id is None:

@@ -9,8 +9,7 @@ from PIL import Image as PILImage
 
 from stable_datasets.schema import ClassLabel, DatasetInfo, DatasetSource, DownloadInfo, Features, Value, Version
 from stable_datasets.schema import Image as ImageFeature
-from stable_datasets.splits import Split, SplitGenerator
-from stable_datasets.utils import BaseDatasetBuilder, bulk_download
+from stable_datasets.utils import BaseDatasetBuilder
 
 
 FMD_CLASS_NAMES = ["fabric", "foliage", "glass", "leather", "metal", "paper", "plastic", "stone", "water", "wood"]
@@ -108,7 +107,7 @@ class FMD(BaseDatasetBuilder):
 }""",
         license="See the source page for Creative Commons terms, image credits, and differently licensed exceptions.",
         assets={
-            "archive": DownloadInfo(
+            "train": DownloadInfo(
                 url="https://people.csail.mit.edu/celiu/CVPR2010/FMD/FMD.zip",
                 # Locally computed fingerprint of the release retrieved on
                 # 2026-09-30, not a checksum published by the dataset authors.
@@ -116,12 +115,6 @@ class FMD(BaseDatasetBuilder):
             ),
         },
     )
-
-    def __new__(cls, *args, split=Split.TRAIN, **kwargs):
-        """Validate the requested split before loading the native collection."""
-        if split not in (None, Split.TRAIN):
-            raise ValueError(f"FMD only provides the unsplit 'train' container, got split={split!r}")
-        return super().__new__(cls, *args, split=split, **kwargs)
 
     def _info(self):
         return DatasetInfo(
@@ -143,15 +136,8 @@ class FMD(BaseDatasetBuilder):
             license=self.SOURCE.license,
         )
 
-    def _candidate_splits(self):
-        return [Split.TRAIN]
-
-    def _split_generators(self):
-        paths = bulk_download([self.SOURCE.assets["archive"]], dest_folder=self._raw_download_dir)
-        return [SplitGenerator(name=Split.TRAIN, gen_kwargs={"archive_path": paths[0]})]
-
-    def _generate_examples(self, archive_path):
-        with zipfile.ZipFile(archive_path) as archive:
+    def _generate_examples(self, data_path, split):
+        with zipfile.ZipFile(data_path) as archive:
             photos, masks = _index_members(archive)
             for image_id in sorted(photos):
                 image = _decode_member(archive, photos[image_id], is_mask=False)

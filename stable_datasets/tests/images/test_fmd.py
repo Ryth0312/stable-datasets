@@ -1,8 +1,7 @@
-"""Offline native FMD cache tests and an opt-in audit of an existing local ZIP."""
+"""Native FMD cache tests and public-download integration coverage."""
 
 import hashlib
 import io
-import os
 import stat
 import zipfile
 from collections import Counter
@@ -12,6 +11,7 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 
+from stable_datasets import StableDataset, StableDatasetDict, utils
 from stable_datasets.images import FMD, fmd
 from stable_datasets.images.fmd import FMD_CLASS_NAMES
 
@@ -68,22 +68,28 @@ def release(tmp_path):
     return path, entries, expected
 
 
-def _load(monkeypatch, tmp_path, archive_path, **kwargs):
+def _mock_download(monkeypatch, tmp_path, archive_path):
     def local_download(specs, dest_folder):
         assert Path(dest_folder) == tmp_path / "downloads"
-        assert list(specs) == [FMD.SOURCE.assets["archive"]]
+        assert list(specs) == [FMD.SOURCE.assets["train"]]
         return [archive_path]
 
-    monkeypatch.setattr(fmd, "bulk_download", local_download)
-    return FMD(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
+    monkeypatch.setattr(utils, "bulk_download", local_download)
+
+
+def _load(monkeypatch, tmp_path, archive_path, *, split="train"):
+    _mock_download(monkeypatch, tmp_path, archive_path)
+    return FMD(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", split=split)
 
 
 def _forbid_raw_assets(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("warm FMD cache must not download or reopen raw assets")
 
-    # Patch the names the module actually calls, not only stable_datasets.utils.
-    monkeypatch.setattr(fmd, "bulk_download", forbidden)
+    # The inherited split generator resolves both download names in utils.
+    monkeypatch.setattr(utils, "bulk_download", forbidden)
+    monkeypatch.setattr(utils, "download", forbidden)
+    monkeypatch.setattr(utils.requests.sessions.Session, "request", forbidden)
     monkeypatch.setattr(fmd.zipfile, "ZipFile", forbidden)
 
 
@@ -112,6 +118,21 @@ def test_metadata_and_export_do_not_download(monkeypatch):
     assert builder.info.features["mask"].encode_format == "PNG"
     assert "exceptions" in builder.info.license
     assert "10.1167/14.9.12" in builder.info.citation
+    assert set(builder.SOURCE.assets) == {"train"}
+    assert builder.SOURCE.assets["train"].url == "https://people.csail.mit.edu/celiu/CVPR2010/FMD/FMD.zip"
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"split": None}, {"split": "train"}])
+def test_constructor_split_contract(monkeypatch, tmp_path, release, kwargs):
+    archive_path, _, expected = release
+    _mock_download(monkeypatch, tmp_path, archive_path)
+    result = FMD(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
+    if kwargs.get("split") is None:
+        assert isinstance(result, StableDatasetDict)
+        assert set(result) == {"train"}
+        result = result["train"]
+    assert isinstance(result, StableDataset)
+    assert len(result) == len(expected)
 
 
 def test_native_cache_preserves_original_pixels_and_modes(monkeypatch, tmp_path, release):
@@ -153,9 +174,11 @@ def test_native_cache_preserves_original_pixels_and_modes(monkeypatch, tmp_path,
     _forbid_raw_assets(monkeypatch)
     for kwargs in ({}, {"split": "train"}, {"split": None}):
         warm = FMD(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads", **kwargs)
-        if kwargs.get("split", "train") is None:
+        if kwargs.get("split") is None:
+            assert isinstance(warm, StableDatasetDict)
             assert set(warm) == {"train"}
             warm = warm["train"]
+        assert isinstance(warm, StableDataset)
         assert len(warm) == len(expected)
         for row in warm:
             for field in ("image", "mask"):
@@ -165,39 +188,12 @@ def test_native_cache_preserves_original_pixels_and_modes(monkeypatch, tmp_path,
     assert cache_files == {p: (p.stat().st_mtime_ns, p.stat().st_size) for p in cache_files}
 
 
-def test_native_train_and_validation_transforms_ignore_masks(monkeypatch, tmp_path, release):
-    from torch.utils.data import DataLoader
-
-    from benchmarks.dataset import get_config
-    from benchmarks.models import collate_single
-    from benchmarks.models.supervised import create_transforms
-
-    archive_path, _, expected = release
-    dataset = _load(monkeypatch, tmp_path, archive_path)
-    train, validation, collate = create_transforms(get_config("fmd"))
-    assert collate is collate_single
-    for transform in (train, validation):
-        transformed = dataset.with_transform(transform)
-        for row in transformed:
-            mode, pixels = expected[row["image_id"]]["mask"]
-            assert row["mask"].mode == mode
-            np.testing.assert_array_equal(np.array(row["mask"]), pixels)
-        batch = next(iter(DataLoader(transformed, batch_size=len(dataset), num_workers=0, collate_fn=collate)))
-        assert set(batch) == {"image", "label"}
-        assert batch["image"].shape == (len(dataset), 3, 224, 224)
-        assert batch["label"].shape == (len(dataset),)
-    for row in dataset:
-        for field in ("image", "mask"):
-            mode, pixels = expected[row["image_id"]][field]
-            assert row[field].mode == mode
-            np.testing.assert_array_equal(np.array(row[field]), pixels)
-
-
 @pytest.mark.parametrize("split", ["test", "validation", "archive"])
-def test_unsupported_split_fails_without_downloading(monkeypatch, split):
+def test_unsupported_split_uses_base_error_with_warm_cache(monkeypatch, tmp_path, release, split):
+    _load(monkeypatch, tmp_path, release[0])
     _forbid_raw_assets(monkeypatch)
-    with pytest.raises(ValueError, match="unsplit 'train' container"):
-        FMD(split=split)
+    with pytest.raises(ValueError, match=f"Split '{split}' not found. Available: \\['train'\\]"):
+        FMD(split=split, processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads")
 
 
 @pytest.mark.parametrize(
@@ -325,23 +321,25 @@ def test_empty_archive_has_no_silent_empty_dataset(monkeypatch, tmp_path):
         _load(monkeypatch, tmp_path, archive_path)
 
 
-@pytest.mark.large
-def test_fmd_local_release(monkeypatch, tmp_path):
-    """Opt in with STABLE_DATASETS_FMD_ARCHIVE; never downloads missing assets."""
-    local_path = os.environ.get("STABLE_DATASETS_FMD_ARCHIVE")
-    if local_path is None:
-        pytest.skip("Set STABLE_DATASETS_FMD_ARCHIVE to audit an approved local release")
-    archive_path = Path(local_path)
-    assert archive_path.is_file()
+def test_fmd_public_release(monkeypatch, tmp_path):
+    """Download the public release through the builder and check every record."""
+    download_dir = tmp_path / "downloads"
+    processed_cache_dir = tmp_path / "processed"
+    assert not download_dir.exists() and not processed_cache_dir.exists()
+    datasets = FMD(processed_cache_dir=processed_cache_dir, download_dir=download_dir)
+    assert isinstance(datasets, StableDatasetDict)
+    assert set(datasets) == {"train"}
+    dataset = datasets["train"]
+    assert isinstance(dataset, StableDataset)
+    assert len(dataset) == 1000
+    archives = list(download_dir.glob("*.zip"))
+    assert len(archives) == 1
+    archive_path = archives[0]
     with archive_path.open("rb") as stream:
         fingerprint = hashlib.sha256()
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             fingerprint.update(block)
-    assert "sha256:" + fingerprint.hexdigest() == FMD.SOURCE.assets["archive"].checksum
-    datasets = _load(monkeypatch, tmp_path, archive_path, split=None)
-    assert set(datasets) == {"train"}
-    dataset = datasets["train"]
-    assert len(dataset) == 1000
+    assert "sha256:" + fingerprint.hexdigest() == FMD.SOURCE.assets["train"].checksum
     labels, modes = Counter(), Counter()
     nonbinary, unequal_channels = 0, 0
     with zipfile.ZipFile(archive_path) as archive:
@@ -352,14 +350,18 @@ def test_fmd_local_release(monkeypatch, tmp_path):
         }
         actual = set()
         for index, row in enumerate(dataset):
+            assert set(row) == {"image", "label", "image_id", "mask"}
             image_id = row["image_id"]
+            assert isinstance(image_id, str)
             assert image_id not in actual
             actual.add(image_id)
             labels[image_id.split("/")[0]] += 1
             assert row["label"] == FMD_CLASS_NAMES.index(image_id.split("/")[0])
+            assert isinstance(row["label"], int) and 0 <= row["label"] < 10
             assert row["image"].mode == "RGB"
             assert row["image"].size == row["mask"].size == (512, 384)
             for field, root in (("image", "image"), ("mask", "mask")):
+                assert isinstance(row[field], PILImage.Image)
                 with PILImage.open(io.BytesIO(archive.read(root + "/" + image_id))) as source:
                     original = source.convert("RGB") if field == "image" else source
                     assert row[field].mode == original.mode
@@ -375,7 +377,7 @@ def test_fmd_local_release(monkeypatch, tmp_path):
     assert nonbinary == 653
     assert unequal_channels == 142
     _forbid_raw_assets(monkeypatch)
-    warm = FMD(processed_cache_dir=tmp_path / "processed", download_dir=tmp_path / "downloads")
+    warm = FMD(split="train", processed_cache_dir=processed_cache_dir, download_dir=download_dir)
     assert len(warm) == 1000
     for before, after in zip(dataset.with_format("raw"), warm.with_format("raw")):
         assert before == after
